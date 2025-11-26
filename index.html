@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>BioAI - Enterprise Edition</title>
+    <script src="https://3Dmol.csb.pitt.edu/build/3Dmol-min.js"></script>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    
+    <style>
+        /* ESTILOS (CSS) */
+        body { 
+            font-family: 'Segoe UI', sans-serif; 
+            background: #0f172a; 
+            color: white; 
+            display: flex; 
+            flex-direction: column; 
+            align-items: center; 
+            min-height: 100vh; 
+            margin: 0; 
+            padding: 20px; 
+        }
+        
+        .panel { 
+            background: rgba(30, 41, 59, 0.7); 
+            backdrop-filter: blur(10px); 
+            padding: 30px; 
+            border-radius: 15px; 
+            border: 1px solid rgba(255,255,255,0.1); 
+            width: 100%; 
+            max-width: 800px; 
+            box-shadow: 0 10px 25px rgba(0,0,0,0.5); 
+            margin-bottom: 20px; 
+        }
+        
+        h1 { 
+            background: linear-gradient(90deg, #22d3ee, #8b5cf6); 
+            -webkit-background-clip: text; 
+            background-clip: text; 
+            -webkit-text-fill-color: transparent; 
+            font-size: 2.5em; 
+            margin-bottom: 10px; 
+        }
+        
+        input { 
+            padding: 15px; 
+            width: 50%; 
+            border-radius: 8px; 
+            border: 1px solid #334155; 
+            background: #1e293b; 
+            color: white; 
+            font-size: 16px; 
+            outline: none; 
+        }
+        
+        /* BOTÓN DE ANÁLISIS (AZUL) */
+        .btn-analizar { 
+            padding: 15px 25px; 
+            background: linear-gradient(90deg, #3b82f6, #2563eb); 
+            color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; transition: 0.3s; margin-left: 10px; 
+        }
+        .btn-analizar:hover { transform: translateY(-2px); box-shadow: 0 5px 15px rgba(59, 130, 246, 0.4); }
+
+        /* BOTÓN DE DESCARGA (VERDE) - Oculto al principio */
+        .btn-download { 
+            display: none; 
+            padding: 15px 25px; 
+            background: linear-gradient(90deg, #10b981, #059669); 
+            color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; transition: 0.3s; margin-left: 10px; 
+        }
+        .btn-download:hover { transform: translateY(-2px); box-shadow: 0 5px 15px rgba(16, 185, 129, 0.4); }
+
+        /* Tarjetas de Datos */
+        .data-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-top: 20px; display: none; }
+        .data-card { background: #1e293b; padding: 15px; border-radius: 8px; text-align: center; border: 1px solid #334155; }
+        .data-value { font-size: 1.5em; font-weight: bold; color: #22d3ee; }
+        .data-label { font-size: 0.8em; color: #94a3b8; text-transform: uppercase; }
+
+        /* Mensajes y Barras */
+        #mensaje-final { margin-top: 20px; padding: 15px; border-radius: 8px; background: #1e293b; display: none; }
+        
+        #mol-container { width: 100%; height: 500px; position: relative; border-radius: 12px; overflow: hidden; background: #000; border: 1px solid #334155; margin-top: 20px; }
+    </style>
+</head>
+<body>
+
+    <h1>🧬 BioAI Enterprise</h1>
+    <p>Suite de Análisis Farmacéutico</p>
+
+    <div class="panel">
+        <div style="display: flex; justify-content: center;">
+            <input type="text" id="smilesInput" value="CC(=O)Oc1ccccc1C(=O)O" placeholder="Estructura SMILES...">
+            
+            <button class="btn-analizar" onclick="analizarMolecula()">⚡ Analizar</button>
+            <button id="btn-excel" class="btn-download" onclick="descargarExcel()">📄 Guardar Excel</button>
+        </div>
+
+        <div id="stats" class="data-grid">
+            <div class="data-card"><div class="data-value" id="val-peso">-</div><div class="data-label">Peso Mol.</div></div>
+            <div class="data-card"><div class="data-value" id="val-logp">-</div><div class="data-label">LogP (Grasa)</div></div>
+            <div class="data-card"><div class="data-value" id="val-viol">-</div><div class="data-label">Violaciones</div></div>
+        </div>
+
+        <div id="mensaje-final"></div>
+    </div>
+
+    <div class="panel">
+        <h3>Visualización Estructural</h3>
+        <div id="mol-container"></div>
+    </div>
+
+    <script>
+        console.log("✅ Sistema BioAI 3.0 cargado.");
+
+        // VARIABLE PARA GUARDAR EL ÚLTIMO ANÁLISIS EN MEMORIA
+        let ultimoDatoGuardado = null; 
+
+        let element = $('#mol-container');
+        let viewer = $3Dmol.createViewer(element, { backgroundColor: 'black' });
+        viewer.render();
+
+        async function analizarMolecula() {
+            const smiles = document.getElementById('smilesInput').value;
+            const msgDiv = document.getElementById('mensaje-final');
+            const btnExcel = document.getElementById('btn-excel');
+            
+            // Ocultar botón de descarga mientras analiza
+            btnExcel.style.display = 'none';
+            msgDiv.style.display = 'block';
+            msgDiv.innerHTML = "⏳ Procesando en el servidor...";
+
+            try {
+                const response = await fetch('http://127.0.0.1:8000/analizar', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ smiles: smiles })
+                });
+
+                const data = await response.json();
+
+                if (data.error) { alert("Error: " + data.error); return; }
+
+                // 1. GUARDAR DATOS EN MEMORIA (Para el Excel)
+                ultimoDatoGuardado = {
+                    molecula: smiles,
+                    peso: data.datos_reales.peso,
+                    logp: data.datos_reales.logp,
+                    violaciones: data.datos_reales.violaciones,
+                    qed: data.resultado.score_qed,
+                    viable: data.resultado.es_viable ? "SI" : "NO"
+                };
+
+                // 2. MOSTRAR BOTÓN DE DESCARGA
+                btnExcel.style.display = 'block';
+
+                // 3. MOSTRAR DATOS EN PANTALLA
+                document.getElementById('stats').style.display = 'grid';
+                document.getElementById('val-peso').innerText = data.datos_reales.peso;
+                document.getElementById('val-logp').innerText = data.datos_reales.logp;
+                document.getElementById('val-viol').innerText = data.datos_reales.violaciones;
+
+                let score = data.resultado.score_qed;
+                let colorBarra = score > 60 ? '#10b981' : '#ef4444'; 
+                
+                msgDiv.innerHTML = `
+                    <div style="text-align: left; margin-bottom: 5px; color: #cbd5e1;">
+                        Probabilidad de éxito (QED Score): <b style="color:${colorBarra}; font-size:1.2em;">${score}%</b>
+                    </div>
+                    <div style="width: 100%; background: #334155; height: 20px; border-radius: 10px; overflow: hidden; border: 1px solid #475569;">
+                        <div style="width: ${score}%; background: ${colorBarra}; height: 100%; transition: width 1s ease-in-out;"></div>
+                    </div>
+                    <p style="margin-top: 10px; font-size: 0.9em; color: #94a3b8;">
+                        ${data.resultado.es_viable ? "✅ Viable para uso oral" : "⚠️ Riesgo de fallo clínico"}
+                    </p>
+                `;
+
+                viewer.clear();
+                $3Dmol.download(`pdb:${data.resultado.pdb_id}`, viewer, {doAssembly:true, noSecondaryStructure:false}, function(){
+                    viewer.setStyle({}, {cartoon:{color: score > 50 ? 'spectrum' : 'red'}});
+                    viewer.zoomTo();
+                    viewer.render();
+                });
+
+            } catch (error) {
+                console.error(error);
+                msgDiv.innerHTML = "❌ Error de conexión.";
+            }
+        }
+
+        // --- FUNCIÓN NUEVA: DESCARGAR CSV ---
+        function descargarExcel() {
+            if (!ultimoDatoGuardado) return;
+
+            // CAMBIO: Usamos punto y coma (;) en vez de coma (,)
+            const encabezados = "Molecula;Peso;LogP;Violaciones;QED_Score;Es_Viable\n";
+            const fila = `"${ultimoDatoGuardado.molecula}";${ultimoDatoGuardado.peso};${ultimoDatoGuardado.logp};${ultimoDatoGuardado.violaciones};${ultimoDatoGuardado.qed};${ultimoDatoGuardado.viable}`;
+            
+            // Añadimos un "BOM" (\uFEFF) para que Excel reconozca las tildes y caracteres especiales
+            const contenidoCSV = "\uFEFF" + encabezados + fila;
+
+            const blob = new Blob([contenidoCSV], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement("a");
+            const url = URL.createObjectURL(blob);
+            link.setAttribute("href", url);
+            link.setAttribute("download", "reporte_farmaco.csv");
+            link.style.visibility = 'hidden';
+            
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+    </script>
+</body>
+</html>
